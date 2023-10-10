@@ -1,0 +1,107 @@
+---
+- name: Deploys VMs based on Whonix
+  hosts: all
+  become: yes
+  vars:
+    whonix_file_name: "Whonix-Xfce-17.0.3.0.Intel_AMD64.qcow2.libvirt.xz"
+    whonix_file_url: "https://download.whonix.org/libvirt/17.0.3.0/{{ whonix_file_name }}"
+    whonix_file_checksum: "sha512:7f951878feaffc670ee08f1e19b7e0dad88846cf8d388e5a7db969913e311c8237fc4663a9c5d2e43c27a2311f9aefb9b29275b5bc509c084997d84e8831d9ed"
+    pool_dir: "/var/lib/libvirt/images"
+    user_name: vmadmin
+    tmp_dir: "/data/tmp"
+
+  tasks:
+  - name: Ensure KVM componets are installed.
+    ansible.builtin.apt:
+      pkg:
+      - qemu-kvm 
+      - libvirt-clients 
+      - libvirt-daemon-system 
+      - bridge-utils 
+      - libguestfs-tools 
+      - genisoimage 
+      - virtinst 
+      - libosinfo-bin 
+      - virt-manager 
+      - dnsmasq 
+      - iptables
+      - python3-libvirt
+      - guestfs-tools
+
+  - name: Add user to KVM Groups
+    ansible.builtin.user:
+      name: "{{ user_name }}"
+      groups: libvirt,libvirt-qemu
+      append: yes
+
+  - name: Create a directory if it does not exist
+    ansible.builtin.file:
+      path: "{{ tmp_dir }}"
+      state: directory
+      mode: '0777'
+
+  - name: Download Whonix
+    get_url:
+      url: "{{ whonix_file_url }}"
+      dest: "{{ tmp_dir }}/{{ whonix_file_name }}"
+      checksum: "{{ whonix_file_checksum }}"
+      mode: 0440
+
+  - name: Uncompress Whonix
+    shell: "tar -xvf {{ tmp_dir }}/{{ whonix_file_name }}"
+    args:
+      chdir: "{{ tmp_dir }}"
+
+  - name: Touch a file - accept License Agreement
+    ansible.builtin.file:
+      path: "{{ tmp_dir }}/WHONIX_BINARY_LICENSE_AGREEMENT_accepted"
+      state: touch
+      mode: u=rw,g=r,o=r
+
+  - name: Create external network
+    shell: "virsh -c qemu:///system net-define {{ tmp_dir }}/Whonix_external*.xml"
+    args:
+      chdir: "{{ tmp_dir }}"
+
+  - name: Create internal network
+    shell: "virsh -c qemu:///system net-define {{ tmp_dir }}/Whonix_internal*.xml"
+    args:
+      chdir: "{{ tmp_dir }}"
+
+  - name: Configure external network autostart
+    shell: "virsh -c qemu:///system net-autostart Whonix-External"
+
+  - name: Start external network
+    shell: "virsh -c qemu:///system net-start Whonix-External"
+
+  - name: Configure internal network autostart
+    shell: "virsh -c qemu:///system net-autostart Whonix-Internal"
+
+  - name: Start internal network
+    shell: "virsh -c qemu:///system net-start Whonix-Internal"
+
+  - name: Import Gateway Image
+    shell: "virsh -c qemu:///system define Whonix-Gateway*.xml"
+    args:
+      chdir: "{{ tmp_dir }}"
+
+  - name: Import Workstation Image
+    shell: "virsh -c qemu:///system define Whonix-Workstation*.xml"
+    args:
+      chdir: "{{ tmp_dir }}"
+
+  - name: Move Whonix-Gateway Image to virt images store
+    shell: "mv Whonix-Gateway*.qcow2 {{ pool_dir }}/Whonix-Gateway.qcow2"
+    args:
+      chdir: "{{ tmp_dir }}"
+
+  - name: Move Whonix-Workstation Image to virt images store
+    shell: "mv Whonix-Workstation*.qcow2 {{ pool_dir }}/Whonix-Workstation.qcow2"
+    args:
+      chdir: "{{ tmp_dir }}"
+
+  - name: start Whonix-Gateway
+    shell: "virsh start Whonix-Gateway"
+
+  - name: start Whonix-Workstation
+    shell: "virsh start Whonix-Workstation"
