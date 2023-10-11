@@ -26,6 +26,7 @@
       - dnsmasq 
       - iptables
       - python3-libvirt
+      - python3-lxml
       - guestfs-tools
 
   - name: Add user to KVM Groups
@@ -58,27 +59,37 @@
       state: touch
       mode: u=rw,g=r,o=r
 
-  - name: Create external network
-    shell: "virsh -c qemu:///system net-define {{ tmp_dir }}/Whonix_external*.xml"
-    args:
-      chdir: "{{ tmp_dir }}"
+  - name: Define external network
+    community.libvirt.virt_net:
+      command: define
+      name: Whonix-External
+      xml: '{{ tmp_dir }}/Whonix_external_network-17.0.3.0.xml'
 
-  - name: Create internal network
-    shell: "virsh -c qemu:///system net-define {{ tmp_dir }}/Whonix_internal*.xml"
-    args:
-      chdir: "{{ tmp_dir }}"
+  - name: Define internal network
+    community.libvirt.virt_net:
+      command: define
+      name: Whonix-Internal
+      xml: '{{ tmp_dir }}/Whonix_internal_network-17.0.3.0.xml'
 
-  - name: Configure external network autostart
-    shell: "virsh -c qemu:///system net-autostart Whonix-External"
+  - name: Enable autostart for external network
+    community.libvirt.virt_net:
+      autostart: yes
+      name: Whonix-External
+
+  - name: Enable autostart for internal network
+    community.libvirt.virt_net:
+      autostart: yes
+      name: Whonix-Internal
 
   - name: Start external network
-    shell: "virsh -c qemu:///system net-start Whonix-External"
-
-  - name: Configure internal network autostart
-    shell: "virsh -c qemu:///system net-autostart Whonix-Internal"
+    community.libvirt.virt_net:
+      command: create
+      name: Whonix-External
 
   - name: Start internal network
-    shell: "virsh -c qemu:///system net-start Whonix-Internal"
+    community.libvirt.virt_net:
+      command: create
+      name: Whonix-Internal
 
   - name: Import Gateway Image
     shell: "virsh -c qemu:///system define Whonix-Gateway*.xml"
